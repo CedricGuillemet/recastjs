@@ -1,0 +1,15 @@
+{
+  "name": "recast.js",
+  "version": "0.0.1",
+  "description": "Direct port of the Recast/Detour engine to JavaScript using Emscripten",
+  "main": "builds/recast.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/CedricGuillemet/recastjs.git"
+  },
+  "author": "Cedric Guillemet <cedric.guillemet@gmail.com>",
+  "bugs": {
+    "url": "https://github.com/CedricGuillemet/recastjs/issues"
+  },
+  "homepage": "https://github.com/CedricGuillemet/recastjs"
+}
