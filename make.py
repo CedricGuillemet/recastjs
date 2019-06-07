@@ -99,7 +99,7 @@ def build():
 
     if not os.path.exists('CMakeCache.txt'):
       stage('Configure via CMake')
-      emscripten.Building.configure([emscripten.PYTHON, os.path.join(EMSCRIPTEN_ROOT, 'emcmake'), 'cmake', '..', '-DBUILD_DEMOS=OFF', '-DBUILD_EXTRAS=OFF', '-DBUILD_CPU_DEMOS=OFF', '-DUSE_GLUT=OFF', '-DCMAKE_BUILD_TYPE=Release'])
+      emscripten.Building.configure([emscripten.PYTHON, os.path.join(EMSCRIPTEN_ROOT, 'emcmake'), 'cmake', '..', '-DCMAKE_BUILD_TYPE=Release'])
 
     stage('Make')
 
@@ -109,7 +109,7 @@ def build():
       emscripten.Building.make(['mingw32-make', '-j', str(CORES)])
     else:
       emscripten.Building.make(['make', '-j', str(CORES)])
-
+      
     stage('Link')
 
     emscripten.Building.link(['glue.bc'] + ['librecastjs.a'], 'recastjs.bc')
