@@ -10,10 +10,12 @@
 #include <float.h>
 #include <algorithm>
 #include <math.h>
+#include <sstream>
+#include <iostream>
 
 void Log(const char* str)
 {
-    printf("%s", str);
+    std::cout << std::string(str) << std::endl;
 }
 
 struct vec_t
@@ -51,22 +53,18 @@ void NavMesh::Build(const float* positions, const int positionCount, const int* 
 	for (unsigned int i = 0; i<indexCount; i++)
 	{
 		int ind = (*t++) * 3;
-		vec_t v( -pv[ind], pv[ind+2], pv[ind+1] );
+		vec_t v( pv[ind+2], pv[ind+1], pv[ind] );
 		bbMin.isMinOf( v );
 		bbMax.isMaxOf( v );
 		mTriangles[i] = v;
 	}
-
+Log("A");
     bool m_keepInterResults = false;
-    float m_agentHeight;
-	float m_agentRadius;
-	float m_agentMaxClimb;
-    m_agentHeight = 0.5f;
-	m_agentRadius = 0.5f;
-	m_agentMaxClimb = 0.3f;
+
 
 	// Init build configuration from GUI
-	/*rcConfig m_cfg;	
+    rcConfig m_cfg = config;
+
 	float m_cellSize;
 	float m_cellHeight;
 	float m_agentHeight;
@@ -82,12 +80,15 @@ void NavMesh::Build(const float* positions, const int positionCount, const int* 
 	float m_detailSampleDist;
 	float m_detailSampleMaxError;
 
-	
+	m_agentHeight = 0.5f;
+	m_agentRadius = 0.5f;
+	m_agentMaxClimb = 0.3f;
+
 
 	m_cellSize = 0.1f;
 	m_cellHeight = 0.1f;
 	m_agentHeight = 0.5f;
-	m_agentRadius = mRadius;
+	m_agentRadius = m_agentRadius;
 	m_agentMaxClimb = 0.3f;
 	m_agentMaxSlope = 90.0f;
 	m_regionMinSize = 8;
@@ -122,8 +123,8 @@ void NavMesh::Build(const float* positions, const int positionCount, const int* 
 	//float bmax[3] = { 20.f, 1.f,  20.f};
 	rcVcopy(m_cfg.bmin, &bbMin.x);
 	rcVcopy(m_cfg.bmax, &bbMax.x);
-    */
-    rcConfig m_cfg = config;
+    
+
 	rcCalcGridSize(m_cfg.bmin, m_cfg.bmax, m_cfg.cs, &m_cfg.width, &m_cfg.height);
 
 	rcContext ctx;
@@ -155,7 +156,8 @@ void NavMesh::Build(const float* positions, const int positionCount, const int* 
 		Log("buildNavigation: Could not create solid heightfield.");
 		return ;
 	}
-	
+	Log("B");
+
 		float *verts = new float[mTriangles.size()*3];
 	int nverts = mTriangles.size();
 	for (unsigned int i =0;i<mTriangles.size();i++)
@@ -183,7 +185,7 @@ void NavMesh::Build(const float* positions, const int positionCount, const int* 
 	memset(m_triareas, RC_WALKABLE_AREA, ntris*sizeof(unsigned char));
 
 
-
+Log("C");
 	//rcMarkWalkableTriangles(m_ctx, m_cfg.walkableSlopeAngle, verts, nverts, tris, ntris, m_triareas);
 	rcRasterizeTriangles(m_ctx, verts, nverts, tris, m_triareas, ntris, *m_solid, m_cfg.walkableClimb);
 
@@ -446,4 +448,97 @@ void NavMesh::Build(const float* positions, const int positionCount, const int* 
 			return ;
 		}
 	}
+    Log("Done");
+}
+
+
+
+void NavMesh::NavMeshPoly(const dtNavMesh& mesh, dtPolyRef ref)
+{
+	
+	const dtMeshTile* tile = 0;
+	const dtPoly* poly = 0;
+	if (dtStatusFailed(mesh.getTileAndPolyByRef(ref, &tile, &poly)))
+		return;
+	
+	//const unsigned int c = duTransCol(col, 64);
+	const unsigned int ip = (unsigned int)(poly - tile->polys);
+
+	if (poly->getType() == DT_POLYTYPE_OFFMESH_CONNECTION)
+	{
+		/*dtOffMeshConnection* con = &tile->offMeshCons[ip - tile->header->offMeshBase];
+
+		dd->begin(DU_DRAW_LINES, 2.0f);
+
+		// Connection arc.
+		duAppendArc(dd, con->pos[0],con->pos[1],con->pos[2], con->pos[3],con->pos[4],con->pos[5], 0.25f,
+					(con->flags & 1) ? 0.6f : 0.0f, 0.6f, c);
+		
+		dd->end();
+        */
+	}
+	else
+	{
+		const dtPolyDetail* pd = &tile->detailMeshes[ip];
+
+		//dd->begin(DU_DRAW_TRIS);
+		for (int i = 0; i < pd->triCount; ++i)
+		{
+			const unsigned char* t = &tile->detailTris[(pd->triBase+i)*4];
+            Triangle triangle;
+            float *pf;
+
+			for (int j = 0; j < 3; ++j)
+			{
+				if (t[j] < poly->vertCount)
+                {
+                    pf = &tile->verts[poly->verts[t[j]]*3];
+                }
+				else
+                {
+                    pf = &tile->detailVerts[(pd->vertBase+t[j]-poly->vertCount)*3];
+                }
+
+                triangle.mPoint[j].mx = pf[2];
+                triangle.mPoint[j].my = pf[1];
+                triangle.mPoint[j].mz = pf[0];
+			}
+            mDebugNavMesh.mTriangles.push_back(triangle);
+		}
+		//dd->end();
+	}
+	
+	//dd->depthMask(true);
+
+}
+
+
+void NavMesh::NavMeshPolysWithFlags(const dtNavMesh& mesh, const unsigned short polyFlags)
+{
+	for (int i = 0; i < mesh.getMaxTiles(); ++i)
+	{
+		const dtMeshTile* tile = mesh.getTile(i);
+		if (!tile->header)
+        {
+            continue;
+        }
+		dtPolyRef base = mesh.getPolyRefBase(tile);
+
+		for (int j = 0; j < tile->header->polyCount; ++j)
+		{
+			const dtPoly* p = &tile->polys[j];
+			if ((p->flags & polyFlags) == 0)
+            {
+                continue;
+            }
+			NavMeshPoly(mesh, base|(dtPolyRef)j);
+		}
+	}
+}
+
+DebugNavMesh& NavMesh::GetDebugNavMesh()
+{
+    mDebugNavMesh.mTriangles.clear();
+    NavMeshPolysWithFlags(*m_navMesh,  0xFFFF);
+    return mDebugNavMesh;
 }
