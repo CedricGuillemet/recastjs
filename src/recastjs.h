@@ -1,5 +1,6 @@
 #pragma once
 #include "../recastnavigation/Detour/Include/DetourNavMesh.h"
+#include "../recastnavigation/DetourCrowd/Include/DetourCrowd.h"
 #include <vector>
 class dtNavMeshQuery;
 class dtNavMesh;
@@ -11,17 +12,30 @@ struct rcConfig;
 struct Vec3 
 {
 	Vec3() {}
- 	float x() { return mx; }
-  	float y() { return my; }
-  	float z() { return mz; }
-
-    float mx,my,mz;
+    Vec3(float v) : x(v), y(v), z(v) {}
+    Vec3(float x, float y, float z) : x(x), y(y), z(z) {}
+    void isMinOf(const Vec3& v)
+    {
+        x = std::min(x, v.x);
+        y = std::min(y, v.y);
+        z = std::min(z, v.z);
+    }
+    void isMaxOf(const Vec3& v)
+    {
+        x = std::max(x, v.x);
+        y = std::max(y, v.y);
+        z = std::max(z, v.z);
+    }
+    float operator [](int index) {
+        return ((float*)&x)[index];
+    }
+    float x, y, z;
 };
 
 struct Triangle 
 {
 	Triangle(){}
-	const Vec3& GetPoint(long n)
+	const Vec3& getPoint(long n)
     {
         if (n < 2)
         {
@@ -34,8 +48,8 @@ struct Triangle
 
 struct DebugNavMesh 
 {
-	int TriangleCount() { return int(mTriangles.size()); }
-	const Triangle& GetTriangle(int n)
+	int getTriangleCount() { return int(mTriangles.size()); }
+	const Triangle& getTriangle(int n)
     {
         if (n < int(mTriangles.size()))
         {
@@ -50,25 +64,39 @@ class NavMesh
 {
 public:
 	NavMesh() : m_navQuery(0)
-	, m_navMesh(0)
-	//, mMesh(0)
+			  , m_navMesh(0)
 	{
 	}
-	void Build(const float* positions, const int positionCount, const int* indices, const int indexCount, const rcConfig& config);
-	//NavPath* ComputePath( vec_t start, vec_t end ) const;
-	//bool ComputePath( vec_t start, vec_t end, NavPath *dest ) const;
-	//bool RandomPositionAround(const vec_t& position, float radius, vec_t& res ) const;
-	//bool ClosestPoint(const vec_t& position, vec_t& res) const;
-	//bool MoveAlong(const vec_t& positionStart, const vec_t& positionEnd, vec_t& res) const;
+	void destroy();
+	void build(const float* positions, const int positionCount, const int* indices, const int indexCount, const rcConfig& config);
 
-    DebugNavMesh& GetDebugNavMesh();
+    DebugNavMesh getDebugNavMesh();
+	Vec3 getClosestPoint(const Vec3& position);
+	dtNavMesh* getNavMesh() 
+	{ 
+		return m_navMesh; 
+	}
+
 protected:
 
 	dtNavMeshQuery* m_navQuery;
 	dtNavMesh* m_navMesh;
-	//MeshLoader *mMesh;
-    DebugNavMesh mDebugNavMesh;
 
-    void NavMeshPoly(const dtNavMesh& mesh, dtPolyRef ref);
-    void NavMeshPolysWithFlags(const dtNavMesh& mesh, const unsigned short polyFlags);
+    void navMeshPoly(DebugNavMesh& debugNavMesh, const dtNavMesh& mesh, dtPolyRef ref);
+    void navMeshPolysWithFlags(DebugNavMesh& debugNavMesh, const dtNavMesh& mesh, const unsigned short polyFlags);
+};
+
+class Crowd
+{
+public:	
+	Crowd(const int maxAgents, const float maxAgentRadius, dtNavMesh* nav);
+	void destroy();
+	//const dtCrowdAgent* getAgent(const int idx);
+	int addAgent(const Vec3& pos, const dtCrowdAgentParams* params);
+	void removeAgent(const int idx);
+	void update(const float dt);
+	Vec3 getAgentPosition(int idx);
+	void agentGoto(int idx, const Vec3& destination);
+protected:
+	dtCrowd *m_crowd;
 };

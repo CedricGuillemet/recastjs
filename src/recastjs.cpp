@@ -18,49 +18,31 @@ void Log(const char* str)
     std::cout << std::string(str) << std::endl;
 }
 
-struct vec_t
+void NavMesh::destroy()
 {
-    vec_t() {}
-    vec_t(float v) : x(v), y(v), z(v) {}
-    vec_t(float x, float y, float z) : x(x), y(y), z(z) {}
-    void isMinOf(const vec_t& v)
-    {
-        x = std::min(x, v.x);
-        y = std::min(y, v.y);
-        z = std::min(z, v.z);
-    }
-    void isMaxOf(const vec_t& v)
-    {
-        x = std::max(x, v.x);
-        y = std::max(y, v.y);
-        z = std::max(z, v.z);
-    }
-    float operator [](int index) {
-        return ((float*)&x)[index];
-    }
-    float x, y, z;
-};
+	dtFreeNavMesh(m_navMesh);
+	dtFreeNavMeshQuery(m_navQuery);
+}
 
-void NavMesh::Build(const float* positions, const int positionCount, const int* indices, const int indexCount, const rcConfig& config)
+void NavMesh::build(const float* positions, const int positionCount, const int* indices, const int indexCount, const rcConfig& config)
 {
-	std::vector<vec_t> mTriangles;
+	std::vector<Vec3> mTriangles;
 	const float* pv = &positions[0];
 	const int* t = &indices[0];
 
-	vec_t bbMin(FLT_MAX);
-	vec_t bbMax(-FLT_MAX);
+	Vec3 bbMin(FLT_MAX);
+	Vec3 bbMax(-FLT_MAX);
 	mTriangles.resize(indexCount);
 	for (unsigned int i = 0; i<indexCount; i++)
 	{
 		int ind = (*t++) * 3;
-		vec_t v( pv[ind+2], pv[ind+1], pv[ind] );
+		Vec3 v( pv[ind+2], pv[ind+1], pv[ind] );
 		bbMin.isMinOf( v );
 		bbMax.isMaxOf( v );
 		mTriangles[i] = v;
 	}
-Log("A");
-    bool m_keepInterResults = false;
 
+    bool m_keepInterResults = false;
 
 	// Init build configuration from GUI
     rcConfig m_cfg = config;
@@ -156,9 +138,8 @@ Log("A");
 		Log("buildNavigation: Could not create solid heightfield.");
 		return ;
 	}
-	Log("B");
 
-		float *verts = new float[mTriangles.size()*3];
+    float *verts = new float[mTriangles.size()*3];
 	int nverts = mTriangles.size();
 	for (unsigned int i =0;i<mTriangles.size();i++)
 	{
@@ -185,7 +166,6 @@ Log("A");
 	memset(m_triareas, RC_WALKABLE_AREA, ntris*sizeof(unsigned char));
 
 
-Log("C");
 	//rcMarkWalkableTriangles(m_ctx, m_cfg.walkableSlopeAngle, verts, nverts, tris, ntris, m_triareas);
 	rcRasterizeTriangles(m_ctx, verts, nverts, tris, m_triareas, ntris, *m_solid, m_cfg.walkableClimb);
 
@@ -453,15 +433,13 @@ Log("C");
 
 
 
-void NavMesh::NavMeshPoly(const dtNavMesh& mesh, dtPolyRef ref)
+void NavMesh::navMeshPoly(DebugNavMesh& debugNavMesh, const dtNavMesh& mesh, dtPolyRef ref)
 {
-	
 	const dtMeshTile* tile = 0;
 	const dtPoly* poly = 0;
 	if (dtStatusFailed(mesh.getTileAndPolyByRef(ref, &tile, &poly)))
 		return;
-	
-	//const unsigned int c = duTransCol(col, 64);
+
 	const unsigned int ip = (unsigned int)(poly - tile->polys);
 
 	if (poly->getType() == DT_POLYTYPE_OFFMESH_CONNECTION)
@@ -481,7 +459,6 @@ void NavMesh::NavMeshPoly(const dtNavMesh& mesh, dtPolyRef ref)
 	{
 		const dtPolyDetail* pd = &tile->detailMeshes[ip];
 
-		//dd->begin(DU_DRAW_TRIS);
 		for (int i = 0; i < pd->triCount; ++i)
 		{
 			const unsigned char* t = &tile->detailTris[(pd->triBase+i)*4];
@@ -499,21 +476,16 @@ void NavMesh::NavMeshPoly(const dtNavMesh& mesh, dtPolyRef ref)
                     pf = &tile->detailVerts[(pd->vertBase+t[j]-poly->vertCount)*3];
                 }
 
-                triangle.mPoint[j].mx = pf[2];
-                triangle.mPoint[j].my = pf[1];
-                triangle.mPoint[j].mz = pf[0];
+                triangle.mPoint[j] = Vec3(pf[2], pf[1], pf[0]);
 			}
-            mDebugNavMesh.mTriangles.push_back(triangle);
+            debugNavMesh.mTriangles.push_back(triangle);
 		}
-		//dd->end();
 	}
-	
-	//dd->depthMask(true);
 
 }
 
 
-void NavMesh::NavMeshPolysWithFlags(const dtNavMesh& mesh, const unsigned short polyFlags)
+void NavMesh::navMeshPolysWithFlags(DebugNavMesh& debugNavMesh, const dtNavMesh& mesh, const unsigned short polyFlags)
 {
 	for (int i = 0; i < mesh.getMaxTiles(); ++i)
 	{
@@ -531,14 +503,97 @@ void NavMesh::NavMeshPolysWithFlags(const dtNavMesh& mesh, const unsigned short 
             {
                 continue;
             }
-			NavMeshPoly(mesh, base|(dtPolyRef)j);
+			navMeshPoly(debugNavMesh, mesh, base|(dtPolyRef)j);
 		}
 	}
 }
 
-DebugNavMesh& NavMesh::GetDebugNavMesh()
+DebugNavMesh NavMesh::getDebugNavMesh()
 {
-    mDebugNavMesh.mTriangles.clear();
-    NavMeshPolysWithFlags(*m_navMesh,  0xFFFF);
-    return mDebugNavMesh;
+	DebugNavMesh debugNavMesh;
+    navMeshPolysWithFlags(debugNavMesh, *m_navMesh,  0xFFFF);
+    return debugNavMesh;
+}
+
+Vec3 NavMesh::getClosestPoint(const Vec3& position)
+{
+	dtQueryFilter m_filter;
+	m_filter.setIncludeFlags(0xffff);
+	m_filter.setExcludeFlags(0);
+
+	dtPolyRef polyRef;
+
+	float m_polyPickExt[3];
+	m_polyPickExt[0] = 2;
+	m_polyPickExt[1] = 4;
+	m_polyPickExt[2] = 2;
+
+	Vec3 pos(position.z, position.y, position.x);
+	m_navQuery->findNearestPoly(&pos.x, m_polyPickExt, &m_filter, &polyRef, 0);
+
+
+	bool posOverlay;
+	Vec3 resDetour;
+	dtStatus status = m_navQuery->closestPointOnPoly(polyRef, &pos.x, &resDetour.x, &posOverlay);
+	
+	if (dtStatusFailed(status))
+	{
+		return Vec3(0.f, 0.f, 0.f);
+	}
+	return Vec3(resDetour.z, resDetour.y, resDetour.x);
+}
+
+Crowd::Crowd(const int maxAgents, const float maxAgentRadius, dtNavMesh* nav)
+{
+	m_crowd = dtAllocCrowd();
+	m_crowd->init(maxAgents, maxAgentRadius, nav);
+}
+
+void Crowd::destroy()
+{
+	if (m_crowd)
+	{
+		dtFreeCrowd(m_crowd);
+		m_crowd = NULL;
+	}
+}
+
+int Crowd::addAgent(const Vec3& pos, const dtCrowdAgentParams* params)
+{
+	return m_crowd->addAgent(&pos.x, params);
+}
+
+void Crowd::removeAgent(const int idx)
+{
+	m_crowd->removeAgent(idx);
+}
+
+void Crowd::update(const float dt)
+{
+	m_crowd->update(dt, NULL);
+}
+
+Vec3 Crowd::getAgentPosition(int idx)
+{
+	const dtCrowdAgent* agent = m_crowd->getAgent(idx);
+	return Vec3(agent->npos[2], agent->npos[1], agent->npos[0]);
+}
+
+void Crowd::agentGoto(int idx, const Vec3& destination)
+{
+	dtQueryFilter m_filter;
+	m_filter.setIncludeFlags(0xffff);
+	m_filter.setExcludeFlags(0);
+
+	dtPolyRef polyRef;
+
+	float m_polyPickExt[3];
+	m_polyPickExt[0] = 2;
+	m_polyPickExt[1] = 4;
+	m_polyPickExt[2] = 2;
+
+	Vec3 pos(destination.z, destination.y, destination.x);
+	m_crowd->getNavMeshQuery()->findNearestPoly(&pos.x, m_polyPickExt, &m_filter, &polyRef, 0);
+
+	m_crowd->requestMoveTarget(idx, polyRef, &pos.x);
 }

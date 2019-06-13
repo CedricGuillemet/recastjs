@@ -8,6 +8,7 @@ from subprocess import Popen, PIPE, STDOUT
 INCLUDES = [
 os.path.join('..', 'src', 'recastjs.h'),
 os.path.join('..', 'recastnavigation', 'Recast', 'Include', 'Recast.h'),
+os.path.join('..', 'recastnavigation', 'Detour', 'Include', 'DetourNavMeshQuery.h'),
 ]
 
 # Startup
@@ -90,7 +91,7 @@ def build():
 
     stage('Build bindings')
 
-    args = ['-I../', '-c']
+    args = ['-I../recastnavigation/Detour/Include']
     for include in INCLUDES:
       args += ['-include', include]
 
